@@ -45,16 +45,36 @@ export type AcquisitionCommissionInstallment = {
   period: string | null;
   commissionPeriod?: string;
   amount: number;
+  openingCollection?: boolean;
+  statementCode?: string;
 };
 
+function includeConfirmedCollections(installments: AcquisitionCommissionInstallment[], payouts?: readonly ContractCommissionPayout[]) {
+  const regular = payouts?.find(row => row.confirmedCollection?.kind === "regular");
+  const opening = payouts?.find(row => row.confirmedCollection?.kind === "opening");
+  if (!installments.length || (!regular && !opening)) return installments;
+  const dateLabel = (day: string) => new Date(day).toLocaleDateString("cs-CZ", { timeZone: "UTC" });
+  if (regular?.confirmedCollection) {
+    const day = regular.confirmedCollection.dueDate;
+    installments[0] = { ...installments[0], commissionPeriod: day, period: dateLabel(day), statementCode: regular.statementCode ?? undefined };
+  }
+  if (opening?.confirmedCollection && typeof opening.expectedAmount === "number") {
+    const day = opening.confirmedCollection.dueDate;
+    installments.unshift({ code: "A101", codes: ["A101"], openingCollection: true, label: "Jednorázová platba při sjednání",
+      commissionPeriod: day, period: dateLabel(day), amount: opening.expectedAmount });
+  }
+  return installments;
+}
+
 export function acquisitionCommissionInstallments({
-  item, product, frequency, policyStartDate, paymentFrequencyChanges,
+  item, product, frequency, policyStartDate, paymentFrequencyChanges, payouts,
 }: {
   item: CommissionResultItemDTO;
   product?: Product;
   frequency?: PaymentFrequency | null;
   policyStartDate?: unknown;
   paymentFrequencyChanges?: PaymentFrequencyChange[] | null;
+  payouts?: readonly ContractCommissionPayout[];
 }): AcquisitionCommissionInstallment[] {
   // Premium frequency does not split products whose commission is paid annually
   // or upfront (including life insurance). Older items may only carry A101.
@@ -70,13 +90,13 @@ export function acquisitionCommissionInstallments({
     const schedule = end ? autoFrequencyCommissionPeriods(contract, end) : [];
     const acquisition = schedule.filter(period => period.code.startsWith("A"));
     if (product === "domex" && count === 1 && acquisition.length === 1) return [];
-    if (schedule.length > 0) return acquisition.map((period, index) => ({
+    if (schedule.length > 0) return includeConfirmedCollections(acquisition.map((period, index) => ({
       commissionPeriod: period.period, code: period.code, codes: [period.code, `A${Number(period.code.slice(1)) - 100}`, `AC${period.code.slice(1)}`, `AC${Number(period.code.slice(1)) - 100}`], label: `${index + 1}. splátka`,
       period: new Date(`${period.period}T00:00:00Z`).toLocaleDateString("cs-CZ", { month: "long", year: "numeric", timeZone: "UTC" }),
       amount: !Number.isFinite(item.amount) ? 0 : product === "domex"
         ? Math.round(item.amount * cppPaymentCommissionMultiplier(contract, period.period) * 100) / 100
         : item.amount * (product === "cppPPRs" ? 1 : autoFrequencyCommissionMultiplier(contract, period.period)),
-    }));
+    })), payouts);
   }
 
   const start = toDate(policyStartDate);
@@ -85,7 +105,7 @@ export function acquisitionCommissionInstallments({
     : null;
   const year = Number(startParts?.find((part) => part.type === "year")?.value);
   const month = Number(startParts?.find((part) => part.type === "month")?.value) - 1;
-  return Array.from({ length: count }, (_, index) => {
+  const installments: AcquisitionCommissionInstallment[] = Array.from({ length: count }, (_, index) => {
     const code = `A${101 + index}`;
     let period: string | null = null;
     if (startParts) {
@@ -101,6 +121,7 @@ export function acquisitionCommissionInstallments({
       amount: Number.isFinite(item.amount) ? item.amount : 0,
     };
   });
+  return includeConfirmedCollections(installments, payouts);
 }
 
 export function payoutsForAcquisitionInstallment(
@@ -108,6 +129,7 @@ export function payoutsForAcquisitionInstallment(
   installment: AcquisitionCommissionInstallment,
 ): ContractCommissionPayout[] {
   return payouts.filter((payout) => {
+    if ((payout.confirmedCollection?.kind === "opening") !== Boolean(installment.openingCollection)) return false;
     // Prefer the statement code. A generic title, range, date or similar amount
     // must never mark several different installments as paid.
     const code = baseCommissionCodeForPayoutComparison(payout.code || payout.key || payout.title);

@@ -1077,7 +1077,7 @@ export function ContractCommissionSection({
         (hasSplitImmediate && isLegacyImmediateTotalTitle(item.title))) continue;
       const amount = validPayoutAmount(item.amount);
       const acquisition = acquisitionCommissionInstallments({ item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
-        policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges });
+        policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges, payouts });
       if (acquisition.length > 0) {
         const projected = acquisitionReceipts(payouts, acquisition);
         if (comparison && projected !== payouts) {
@@ -1093,7 +1093,7 @@ export function ContractCommissionSection({
           return sum + plan.amount;
         }, 0);
         const originalAcquisition = datedDomex ? amount * periodsPerYear(paymentFrequency ?? "annual")
-          : acquisition.reduce((sum, installment) => sum + installment.amount, 0);
+          : acquisition.reduce((sum, installment) => sum + (installment.openingCollection ? 0 : installment.amount), 0);
         const delta = plannedAcquisition - originalAcquisition;
         immediateDelta += delta;
         totalDelta += delta;
@@ -1610,7 +1610,7 @@ export function ContractCommissionSection({
 
     const acquisitionInstallments = acquisitionCommissionInstallments({
       item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
-      policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges,
+      policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges, payouts: payoutsForRows,
     });
     if (acquisitionInstallments.length > 0) {
       const projected = acquisitionReceipts(payoutsForRows, acquisitionInstallments);
@@ -1645,7 +1645,7 @@ export function ContractCommissionSection({
                 {payableInstallments.length > 0 && <span className={styles.installmentMeta} title="Počet splátek se zapsanou výplatou. Rozdíly v částkách jsou uvedeny samostatně.">Zapsané výplaty {receivedCount}/{payableInstallments.length} · první rok {formatMoney(total)}</span>}
                 {itemNote && <span className="mt-1 block text-xs font-semibold text-red-600">{itemNote}</span>}
                 <span className={styles.installmentProgress} aria-hidden="true">
-                  {installments.map((installment) => <span key={installment.code} data-status={installment.state.status} data-received={installment.state.paidAmount > 0 ? "true" : undefined} />)}
+                  {installments.map((installment) => <span key={installment.openingCollection ? "opening" : installment.code} data-status={installment.state.status} data-received={installment.state.paidAmount > 0 ? "true" : undefined} />)}
                 </span>
               </span>
             </span>
@@ -1662,10 +1662,10 @@ export function ContractCommissionSection({
           <div className={styles.breakdown}>
             {installments.map((installment) => {
               return (
-                <div key={installment.code} className={`${styles.breakdownRow} ${styles.compactInstallmentRow} ${payoutRowClass(installment.state.status)}`}>
+                <div key={installment.openingCollection ? "opening" : installment.code} className={`${styles.breakdownRow} ${styles.compactInstallmentRow} ${payoutRowClass(installment.state.status)}`}>
                   <span className={styles.installmentDetails}>
                     <span className={styles.installmentHeading}>
-                      <span>{installment.label}</span> <span className={styles.installmentCode}>{installment.code}</span>
+                      <span>{installment.label}</span> <span className={styles.installmentCode}>{installment.statementCode ?? installment.code}</span>
                       {installment.period && <span className={styles.installmentDate}><CalendarDays size={12} aria-hidden="true" /><span><span className="sr-only">Období splátky · </span>{installment.period}</span></span>}
                     </span>
                     {renderInstallmentSources(installment.records, installment.codes, installment.label)}

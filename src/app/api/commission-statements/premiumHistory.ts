@@ -491,8 +491,10 @@ export const premiumHistoryEntryFromStatementRow = ({
   }
   if (contract.productKey !== "domexneuron" && row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
   const project = projectCommissionCode ?? createCommissionCodeProjection(contract, contract.commissionPayouts ?? []);
+  const ruleKind = (contract.commissionPayoutCodeAdjustment as { kind?: string } | null)?.kind;
+  if (ruleKind === "cpp-auto-separate-opening-collection" && project({ code: row.commissionCode, statementId, writtenBy, payoutMonthKey }).confirmedCollection) return null;
   const codeProjection = premiumCodeProjection(contract, { commissionCode: row.commissionCode, writtenBy, payoutMonthKey, statementDate, statementPeriod,
-    ...((contract.commissionPayoutCodeAdjustment as { kind?: string } | undefined)?.kind === "cpp-auto-quarterly-combined-start" ? { statementId } : {}),
+    ...(ruleKind === "cpp-auto-quarterly-combined-start" ? { statementId } : {}),
   }, project);
   const effectiveCode = codeProjection.resolvedCommissionCode ?? row.commissionCode;
   const effectiveKind = codeProjection.resolvedCommissionCode ? "auto_change" : row.premiumKind;

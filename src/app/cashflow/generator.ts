@@ -304,7 +304,7 @@ function indexSettledCommissionPayouts(
 ): IndexedCommissionPayout[] {
   return (payouts ?? [])
     .map((payout, index): IndexedCommissionPayout | null => {
-      if (!isSettledCommissionPayout(payout)) return null;
+      if (payout.confirmedCollection?.kind === "opening" || !isSettledCommissionPayout(payout)) return null;
       const date = receiptPayoutDate(payout, product, calendar);
       if (!date) return null;
       return {
@@ -906,11 +906,12 @@ function generateCashflowSchedule(
             : null,
         commissionCodeCorrectionNote: settledPayout?.payout.commissionCodeCorrectionNote,
         commissionPayoutKey: settledPayout?.key ?? null,
-        commissionPeriodStart,
+        commissionPeriodStart: settledPayout?.payout.confirmedCollection?.dueDate ?? commissionPeriodStart,
         commissionStatementNumber: settledPayout?.payout.statementNumber ?? null,
         commissionStatementPeriod: settledPayout?.payout.statementPeriod ?? null,
         ...metadata,
-        ...(neonInstallmentCode && settledPayout?.payout.statementCode ? { statementCode: settledPayout.payout.statementCode } : {}),
+        ...((neonInstallmentCode || settledPayout?.payout.confirmedCollection) && settledPayout?.payout.statementCode
+          ? { statementCode: settledPayout.payout.statementCode } : {}),
         ...(pendingFlexiSchedule && settledPayout?.payout.code ? {
           commissionCode: settledPayout.payout.code,
           commissionCodeAliases: uniqueCommissionCodes([settledPayout.payout.code, metadata.commissionCode], product),
@@ -990,10 +991,11 @@ function generateCashflowSchedule(
           commissionCodeAliases: aliases,
           commissionLabel,
           payoutStatus: "paid",
-          predictedAmount: flexiWithoutBase ? null : 0,
+          predictedAmount: indexedPayout.payout.confirmedCollection?.kind === "opening"
+            ? indexedPayout.payout.expectedAmount ?? null : flexiWithoutBase ? null : 0,
           isStatementOnly: true,
           ...(meaning?.kind === "correction" ? { payoutPlanStatus: "correction" as const } : {}),
-          commissionPeriodStart: payoutPeriods.get(indexedPayout.key) ?? null,
+          commissionPeriodStart: indexedPayout.payout.confirmedCollection?.dueDate ?? payoutPeriods.get(indexedPayout.key) ?? null,
           originalDate: null,
           commissionCodeCorrectionNote: indexedPayout.payout.commissionCodeCorrectionNote,
           commissionPayoutKey: indexedPayout.key,

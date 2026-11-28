@@ -1,5 +1,7 @@
 import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { createCommissionCodeProjection } from "@/app/lib/commissionPayoutCodeAdjustment";
+import type { ConfirmedCollection } from "@/app/lib/confirmedOpeningCollection";
+import { cppAutoCoefficient } from "@/app/lib/productFormulas/cppAuto";
 import { commissionPayoutPositionForOwner } from "@/lib/server/commissionPayoutPositionPolicy";
 import { officeContributionFromStatementHtml } from "./officeContribution";
 import { isFlexiIncreaseWithoutBase, matchFlexiIncreaseByCommission, matchingFlexiIncreaseCommission, matchLifeStatementEntry, type LifeStatementEntry } from "@/app/lib/lifeStatementMatching";
@@ -3016,7 +3018,7 @@ const contractForPayoutPosition = (
 
 const payoutRecordFromStatementRow = ({
   row: sourceRow,
-  resolvedCommissionCode,
+  projectedReceipt,
   contract: originalContract,
   ownerEmail,
   statementId,
@@ -3032,7 +3034,7 @@ const payoutRecordFromStatementRow = ({
   indexationEvidenceUnambiguous = true,
 }: {
   row: CommissionStatementPayoutRow;
-  resolvedCommissionCode?: string | null;
+  projectedReceipt?: { code?: string | null; confirmedCollection?: ConfirmedCollection };
   contract: ContractDoc;
   ownerEmail: string;
   statementId: string;
@@ -3047,6 +3049,7 @@ const payoutRecordFromStatementRow = ({
   endorsementContext?: StatementEndorsementContext;
   indexationEvidenceUnambiguous?: boolean;
 }): ContractCommissionPayoutRecord => {
+  const resolvedCommissionCode = projectedReceipt?.code;
   const row = resolvedCommissionCode && resolvedCommissionCode !== sourceRow.commissionCode
     ? { ...sourceRow, commissionCode: resolvedCommissionCode } : sourceRow;
   const monthForException = payoutExceptionStatementMonth(statementPeriod, payoutMonthKey);
@@ -3056,7 +3059,11 @@ const payoutRecordFromStatementRow = ({
     coefficient: indexationEvidenceUnambiguous ? domexNeuronIndexationCoefficient(contract, row, writtenBy) : null,
     referenceDate: statementPeriod ?? statementChronologyMs ?? statementDate,
   });
-  const expectedAmount = indexation.status === "confirmed" ? indexation.expectedCommission!
+  const collection = projectedReceipt?.confirmedCollection;
+  const openingPosition = collection?.kind === "opening" && row.source === "own" && contract.productKey === "cppAuto"
+    ? normalizePositionValue(contract.position) : null;
+  const expectedAmount = openingPosition && collection ? Math.round(collection.premium * cppAutoCoefficient(openingPosition) * 100) / 100
+    : indexation.status === "confirmed" ? indexation.expectedCommission!
     : expectedPayoutAmountForRow(contract, row, writtenBy, endorsementContext);
   const signedAmount = Math.round(row.commission * 100) / 100;
   const absAmount = Math.round(Math.abs(signedAmount) * 100) / 100;
@@ -3108,10 +3115,7 @@ const payoutRecordFromStatementRow = ({
   const systemCalculationBase = careBase && !contract.neonRefreshCareAnnualPremium
     ? careBase.annual
     : projectStatementCommissionAmount(contract, row, careBase?.annual ?? originalSystemCalculationBase, endorsementContext);
-  const systemBaseAmount =
-    systemCalculationBase == null
-      ? null
-      : systemCalculationBase;
+  const systemBaseAmount = collection?.premium ?? systemCalculationBase ?? null;
   const detail = payoutRecordDetail({
     row,
     contract,
@@ -4228,8 +4232,9 @@ const processStatementWrites = async ({
         contract.refreshStatementResolvedStatementPeriod !== statementPeriod ||
         contract.refreshStatementResolvedStatementDate !== statementDate ||
         contract.refreshStatementResolvedStatementChronologyMs !== statementChronologyMs);
+    const ruleKind = contract.commissionPayoutCodeAdjustment?.kind;
     const codeEvidenceForRow = (row: CommissionStatementPayoutRow) => ({
-      ...(contract.commissionPayoutCodeAdjustment?.kind === "cpp-auto-quarterly-combined-start"
+      ...(ruleKind === "cpp-auto-quarterly-combined-start" || ruleKind === "cpp-auto-separate-opening-collection"
         ? { statementId: docId, key: statementPayoutKey(docId, row) } : {}),
       code: row.commissionCode, payoutMonthKey, writtenBy: ctxEmail,
       amount: row.status === "storno" ? -Math.abs(row.commission) : row.commission, status: row.status,
@@ -4421,7 +4426,7 @@ const processStatementWrites = async ({
       payoutRecordFromStatementRow({
         row,
         contract: contractForPayoutExpectations,
-        resolvedCommissionCode: projectCommissionCode(codeEvidenceForRow(row)).code,
+        projectedReceipt: projectCommissionCode(codeEvidenceForRow(row)),
         ownerEmail: resolution.ownerEmail,
         statementId: docId,
         statementNumber,

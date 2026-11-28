@@ -30,6 +30,7 @@ export type EntryDoc = {
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: {
+    confirmedCollection?: import("@/app/lib/confirmedOpeningCollection").ConfirmedCollection;
     statementCode?: string | null;
     commissionCodeCorrectionNote?: string;
     key?: string | null;

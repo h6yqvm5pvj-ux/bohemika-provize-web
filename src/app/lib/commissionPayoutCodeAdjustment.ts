@@ -1,6 +1,7 @@
 import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
 import { confirmedQuarterlyProjection, type ConfirmedInstallmentSplit, type ConfirmedQuarterlyRule } from "./confirmedQuarterlyInstallments";
 import { kooperativaRenewalChronology } from "./kooperativaRenewalChronology";
+import { confirmedOpeningCollectionProjection, type ConfirmedCollection, type ConfirmedOpeningCollectionRule } from "./confirmedOpeningCollection";
 import { baseCommissionCodeForPayoutComparison } from "./commissionPayoutRules";
 import { endorsementCommissionDay } from "./endorsementCommissionPlan";
 import { isAutoProduct, isLifeProduct, isRecordOnlyProduct } from "./productCatalog";
@@ -16,9 +17,11 @@ export type CommissionPayoutCodeAdjustment = {
   | { kind: "cpp-auto-annual-sequence-offset"; fromPayoutMonthKey: string }
   | { kind: "cpp-auto-quarterly-sequence-offset"; sourceStatementIds: readonly string[] }
   | ConfirmedQuarterlyRule
+  | ConfirmedOpeningCollectionRule
   | { kind: "cpp-pprs-acquisition-a201"; statementId: string; payoutKey: string }
 );
 export type AdjustedCommissionPayout = {
+  confirmedCollection?: ConfirmedCollection;
   confirmedInstallmentSplit?: ConfirmedInstallmentSplit;
   statementCode?: string | null;
   commissionCodeCorrectionNote?: string;
@@ -114,7 +117,8 @@ function createSemiannualCodeProjection(entry: CommissionCodeContract, evidence:
   };
 }
 
-export function createCommissionCodeProjection(entry: CommissionCodeContract, evidence: readonly CommissionCodeReceipt[]) {
+export function createCommissionCodeProjection(entry: CommissionCodeContract, evidence: readonly CommissionCodeReceipt[]):
+  <T extends CommissionCodeReceipt>(receipt: T) => T & AdjustedCommissionPayout {
   const fallback = createStandardCommissionCodeProjection(entry, evidence);
   if (entry.productKey !== "kooperativaAuto" || entry.entryType === "endorsement") return fallback;
   const chronology = kooperativaRenewalChronology(entry, evidence);
@@ -129,8 +133,17 @@ export function createCommissionCodeProjection(entry: CommissionCodeContract, ev
 function createStandardCommissionCodeProjection(entry: CommissionCodeContract, evidence: readonly CommissionCodeReceipt[]) {
   const unchanged = <T extends CommissionCodeReceipt>(receipt: T): T & AdjustedCommissionPayout => receipt;
   if (entry.productKey === "neon") return createNeonCareCodeProjection(entry, evidence);
-  if (entry.frequencyRaw === "semiannual") return createSemiannualCodeProjection(entry, evidence);
   const rule = entry.commissionPayoutCodeAdjustment as CommissionPayoutCodeAdjustment | null | undefined;
+  if (entry.frequencyRaw === "semiannual") {
+    const standard = createSemiannualCodeProjection(entry, evidence);
+    if (entry.productKey !== "cppAuto" || entry.entryType === "endorsement" || rule?.kind !== "cpp-auto-separate-opening-collection" ||
+        !email(rule.writtenBy) || !Number.isFinite(rule.confirmedAtMs) || rule.confirmedAtMs <= 0) return standard;
+    const confirmed = confirmedOpeningCollectionProjection(rule, evidence);
+    return <T extends CommissionCodeReceipt>(receipt: T) => {
+      const projected = confirmed(receipt);
+      return projected.confirmedCollection ? projected : standard(receipt);
+    };
+  }
   if (rule?.kind === "cpp-auto-quarterly-combined-start" && entry.productKey === "cppAuto" &&
       entry.frequencyRaw === "quarterly" && entry.entryType !== "endorsement" &&
       email(rule.writtenBy) && Number.isFinite(rule.confirmedAtMs) && rule.confirmedAtMs > 0) {
